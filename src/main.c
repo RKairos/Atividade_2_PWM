@@ -6,30 +6,72 @@
 // Define o valor do registrador MOD do TPM para configurar o período do PWM
 #define TPM_MODULE 1000         // Define a frequência do PWM fpwm = (TPM_CLK / (TPM_MODULE * PS))
 // Valores de duty cycle correspondentes a diferentes larguras de pulso
-uint16_t duty_50  = TPM_MODULE/2;       // 50% de duty cycle (meio brilho)
+// Duty cycle dos LEDs
+#define RED_BASE    (100)   // vermelho 100%
+#define GREEN_BASE (36) // verde 36%
+#define BLUE_BASE  (TPM_MODULE) // azul 0% --> não entra nas contas é sempre 0
+
+
+uint16_t duty_red;         
+uint16_t duty_green;   
+uint16_t duty_blue = BLUE_BASE;  
+
+int intensidade;
+
+uint16_t calcula_duty(uint16_t base, int intensidade)
+{
+    uint16_t brilho;
+
+    // Mantém a proporção da cor e aplica a intensidade geral
+    brilho = (TPM_MODULE * base * intensidade) / (100 * 100);
+
+    // Inverte porque o LED da FRDM-KL25Z é active low
+    return TPM_MODULE - brilho;
+}
 
 int main(void)
 {
-    // Inicializa o módulo TPM2 com:
-    // - base do TPMx
-    // - fonte de clock PLL/FLL (TPM_CLK)
-    // - valor do registrador MOD
-    // - tipo de clock (TPM_CLK)
-    // - prescaler de 1 a 128 (PS)
-    // - modo de operação EDGE_PWM
-    pwm_tpm_Init(TPM2, TPM_PLLFLL, TPM_MODULE, TPM_CLK, PS_128, EDGE_PWM);
+    // Inicializa TPM2
+    pwm_tpm_Init(TPM2, TPM_OSCERCLK, TPM_MODULE, TPM_CLK, PS_128, EDGE_PWM);
 
-    // Inicializa o canal 0 do TPM2 para gerar sinal PWM na porta GPIOB_18
-    // - modo TPM_PWM_H (nível alto durante o pulso)
-    pwm_tpm_Ch_Init(TPM2, 0, TPM_PWM_H, GPIOB, 18);
+    /*
+      FRDM-KL25Z RGB LED:
 
-    // Define o valor do duty cycle: nesse caso, duty_100 (LED quase desligado)
-    pwm_tpm_CnV(TPM2, 0, duty_50);
+      PTB18 → Vermelho
+      PTB19 → Verde
+      PTD1  → Azul
+    */
 
-    // Loop infinito
-    for (;;)
+    // Inicializa canais PWM
+    pwm_tpm_Ch_Init(TPM2,0,TPM_PWM_H,GPIOB,18); // Vermelho
+    pwm_tpm_Ch_Init(TPM2,1,TPM_PWM_H,GPIOB,19); // Verde
+    pwm_tpm_Ch_Init(TPM2,2,TPM_PWM_H,GPIOD,1);  // Azul
+
+    while (1)
     {
-        // O programa poderia alterar o duty cycle dinamicamente aqui se desejado
+        printf("\nDigite a intensidade do LED laranja de 0 a 100: ");
+        scanf("%d", &intensidade);
+
+        if (intensidade < 0)
+        {
+            intensidade = 0;
+        }
+
+        if (intensidade > 100)
+        {
+            intensidade = 100;
+        }
+
+        duty_red   = calcula_duty(RED_BASE, intensidade);
+        duty_green = calcula_duty(GREEN_BASE, intensidade);
+        duty_blue  = calcula_duty(BLUE_BASE, intensidade);
+    
+
+        pwm_tpm_CnV(TPM2, 0, duty_red);
+        pwm_tpm_CnV(TPM2, 1, duty_green);
+        pwm_tpm_CnV(TPM2, 2, duty_blue);
+
+        printf("Intensidade aplicada: %d%%\n", intensidade);
     }
 
     return 0;
